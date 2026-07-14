@@ -114,6 +114,25 @@
     line-height: 1.5;
   }
 
+  .tags{
+    display:flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+
+  .tag{
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--sapphire-bright);
+    background: rgba(46,111,217,0.12);
+    border: 1px solid rgba(46,111,217,0.35);
+    border-radius: 999px;
+    padding: 3px 8px;
+  }
+
   .toggle-row{
     display:flex;
     align-items:center;
@@ -292,10 +311,10 @@
 const API_BASE = "https://automation-app-5hbp.onrender.com";
 
 const ENGINE_META = {
-  "reflections-carousel": { title: "Reflections carousel", sub: "Multi-slide reflections carousel." },
-  "encouragement": { title: "Encouragement", sub: "WhatsApp encouragement message to the group." },
-  "reflection-post": { title: "Reflection post", sub: "Single reflection post." },
-  "slide-generator": { title: "Slide generator", sub: "Rendered slide image from the source row." },
+  "reflections-carousel": { title: "Reflections carousel", sub: "Multi-slide reflection carousel.", tags: ["Instagram"] },
+  "encouragement": { title: "Encouragement message", sub: "A short message of encouragement.", tags: ["WhatsApp", "Instagram"] },
+  "reflection-post": { title: "Reflection message", sub: "A single reflection, sent out.", tags: ["WhatsApp", "Instagram"] },
+  "slide-generator": { title: "Image slide creator", sub: "A single rendered visual, ready to post.", tags: ["Instagram"] },
 };
 
 const grid = document.getElementById("grid");
@@ -308,6 +327,7 @@ function cardTemplate(engineId, meta, settings){
         <div>
           <p class="card-title">${meta.title}</p>
           <p class="card-sub">${meta.sub}</p>
+          <div class="tags">${(meta.tags || []).map(t => `<span class="tag">${t}</span>`).join("")}</div>
         </div>
         <label class="switch">
           <input type="checkbox" class="f-enabled" ${s.enabled ? "checked" : ""}>
