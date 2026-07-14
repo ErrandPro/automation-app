@@ -292,19 +292,117 @@
     display:block;
   }
 
+  .carousel-main{
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--panel-raised);
+  }
+
+  .carousel-main img{ cursor: zoom-in; border: none; }
+
+  .carousel-arrow{
+    position:absolute;
+    top:50%;
+    transform: translateY(-50%);
+    background: rgba(13,16,23,0.65);
+    color:#fff;
+    border:none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-size: 16px;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex: none;
+    padding: 0;
+  }
+
+  .carousel-arrow.prev{ left: 8px; }
+  .carousel-arrow.next{ right: 8px; }
+  .carousel-arrow:hover{ background: rgba(13,16,23,0.9); }
+
+  .carousel-counter{
+    position:absolute;
+    top:8px;
+    right:8px;
+    background: rgba(13,16,23,0.65);
+    color:#fff;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+
+  .carousel-dots{
+    display:flex;
+    justify-content:center;
+    gap: 5px;
+    margin-top: 8px;
+  }
+
+  .carousel-dots span{
+    width:6px; height:6px;
+    border-radius:50%;
+    background: var(--line);
+    cursor:pointer;
+    flex: none;
+  }
+
+  .carousel-dots span.active{ background: var(--sapphire-bright); }
+
   .output-gallery{
-    display:grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    display:flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
   }
 
   .output-gallery img{
-    width:100%;
-    aspect-ratio: 1;
+    width: 56px;
+    height: 56px;
+    flex: none;
     object-fit: cover;
     border-radius: 6px;
     border: 1px solid var(--line);
     cursor: pointer;
+    opacity: 0.6;
+  }
+
+  .output-gallery img.active{ opacity: 1; border-color: var(--sapphire); }
+
+  .lightbox{
+    display:none;
+    position: fixed;
+    inset: 0;
+    background: rgba(6,7,11,0.9);
+    z-index: 999;
+    align-items:center;
+    justify-content:center;
+    padding: 32px;
+  }
+
+  .lightbox.visible{ display:flex; }
+
+  .lightbox img{
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 8px;
+  }
+
+  .lightbox-close{
+    position: fixed;
+    top: 20px;
+    right: 24px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 28px;
+    cursor: pointer;
+    line-height:1;
   }
 
   .output-actions{ display:flex; gap:10px; }
@@ -346,6 +444,11 @@
   <div class="grid" id="grid"></div>
 
   <footer>automation-app-5hbp.onrender.com</footer>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightbox-close" aria-label="Close">&times;</button>
+  <img id="lightbox-img" src="" alt="Enlarged slide">
 </div>
 
 <script>
@@ -453,7 +556,13 @@ function cardTemplate(engineId, meta, settings){
       <div class="save-msg"></div>
 
       <div class="output-panel">
-        <img class="output-img" src="" alt="Generated slide">
+        <div class="carousel-main">
+          <img class="output-img" src="" alt="Generated slide">
+          <button class="carousel-arrow prev" aria-label="Previous slide">‹</button>
+          <button class="carousel-arrow next" aria-label="Next slide">›</button>
+          <div class="carousel-counter"></div>
+        </div>
+        <div class="carousel-dots"></div>
         <div class="output-gallery"></div>
         <div class="output-actions">
           <button class="btn-ghost btn-download">Download</button>
@@ -557,7 +666,12 @@ async function loadEngines(){
       const lastRun = card.querySelector(".last-run");
       const outputPanel = card.querySelector(".output-panel");
       const outputImg = card.querySelector(".output-img");
+      const counter = card.querySelector(".carousel-counter");
+      const dotsEl = card.querySelector(".carousel-dots");
       const gallery = card.querySelector(".output-gallery");
+      const prevBtn = card.querySelector(".carousel-arrow.prev");
+      const nextBtn = card.querySelector(".carousel-arrow.next");
+
       btn.disabled = true;
       btn.textContent = "Running...";
       try {
@@ -567,38 +681,48 @@ async function loadEngines(){
         lastRun.textContent = "Last run " + new Date().toLocaleString();
         statusLine.querySelector("span:last-child").textContent = data.message ? "— " + data.message : "";
 
-        gallery.innerHTML = "";
-        outputImg.style.display = "none";
-        gallery.style.display = "none";
+        const urls = Array.isArray(data.outputUrls) && data.outputUrls.length > 0
+          ? data.outputUrls
+          : (data.outputUrl ? [data.outputUrl] : []);
 
-        if (Array.isArray(data.outputUrls) && data.outputUrls.length > 0) {
-          gallery.style.display = "grid";
-          data.outputUrls.forEach((url, i) => {
-            const thumb = document.createElement("img");
-            thumb.src = url;
-            thumb.alt = `Slide ${i + 1}`;
-            thumb.addEventListener("click", () => {
-              outputImg.src = url;
-              outputImg.style.display = "block";
-            });
-            gallery.appendChild(thumb);
-          });
-          outputImg.src = data.outputUrls[0];
-          outputImg.style.display = "block";
-          outputPanel.classList.add("visible");
-        } else if (data.outputUrl) {
-          outputImg.src = data.outputUrl;
-          outputImg.style.display = "block";
-          outputPanel.classList.add("visible");
-        } else {
+        if (urls.length === 0) {
           outputPanel.classList.remove("visible");
+          return;
         }
+
+        card.dataset.slides = JSON.stringify(urls);
+        card.dataset.index = "0";
+        renderSlide(card, 0);
+        outputPanel.classList.add("visible");
+        prevBtn.style.display = urls.length > 1 ? "flex" : "none";
+        nextBtn.style.display = urls.length > 1 ? "flex" : "none";
+        counter.style.display = urls.length > 1 ? "block" : "none";
+        dotsEl.style.display = urls.length > 1 ? "flex" : "none";
+        gallery.style.display = urls.length > 1 ? "flex" : "none";
       } catch (err) {
         dot.className = "status-dot error";
       } finally {
         btn.disabled = false;
         btn.textContent = "Trigger now";
       }
+    });
+
+    card.querySelector(".carousel-arrow.prev").addEventListener("click", () => {
+      const urls = JSON.parse(card.dataset.slides || "[]");
+      let index = parseInt(card.dataset.index || "0", 10);
+      index = (index - 1 + urls.length) % urls.length;
+      renderSlide(card, index);
+    });
+
+    card.querySelector(".carousel-arrow.next").addEventListener("click", () => {
+      const urls = JSON.parse(card.dataset.slides || "[]");
+      let index = parseInt(card.dataset.index || "0", 10);
+      index = (index + 1) % urls.length;
+      renderSlide(card, index);
+    });
+
+    card.querySelector(".output-img").addEventListener("click", () => {
+      openLightbox(card.querySelector(".output-img").src);
     });
 
     card.querySelector(".btn-download").addEventListener("click", async () => {
@@ -643,6 +767,55 @@ async function loadEngines(){
     });
   });
 }
+
+function renderSlide(card, index){
+  const urls = JSON.parse(card.dataset.slides || "[]");
+  if (urls.length === 0) return;
+  card.dataset.index = String(index);
+
+  const outputImg = card.querySelector(".output-img");
+  const counter = card.querySelector(".carousel-counter");
+  const dotsEl = card.querySelector(".carousel-dots");
+  const gallery = card.querySelector(".output-gallery");
+
+  outputImg.src = urls[index];
+  counter.textContent = `${index + 1} / ${urls.length}`;
+
+  dotsEl.innerHTML = urls.map((_, i) =>
+    `<span class="${i === index ? "active" : ""}" data-i="${i}"></span>`
+  ).join("");
+  dotsEl.querySelectorAll("span").forEach(d => {
+    d.addEventListener("click", () => renderSlide(card, parseInt(d.dataset.i, 10)));
+  });
+
+  if (gallery.children.length !== urls.length) {
+    gallery.innerHTML = urls.map((url, i) =>
+      `<img src="${url}" alt="Slide ${i + 1}" data-i="${i}">`
+    ).join("");
+    gallery.querySelectorAll("img").forEach(img => {
+      img.addEventListener("click", () => renderSlide(card, parseInt(img.dataset.i, 10)));
+      img.addEventListener("dblclick", () => openLightbox(img.src));
+    });
+  }
+  gallery.querySelectorAll("img").forEach((img, i) => {
+    img.classList.toggle("active", i === index);
+  });
+}
+
+function openLightbox(src){
+  document.getElementById("lightbox-img").src = src;
+  document.getElementById("lightbox").classList.add("visible");
+}
+
+document.getElementById("lightbox-close").addEventListener("click", () => {
+  document.getElementById("lightbox").classList.remove("visible");
+});
+
+document.getElementById("lightbox").addEventListener("click", (e) => {
+  if (e.target.id === "lightbox") {
+    document.getElementById("lightbox").classList.remove("visible");
+  }
+});
 
 loadEngines();
 </script>
