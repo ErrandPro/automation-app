@@ -67,6 +67,8 @@ async function fireEngine(engineId, settings) {
 
   let status = "success";
   let message = "Ran successfully";
+  let outputUrl = null;
+  let outputUrls = null;
 
   try {
     const res = await fetch(engine.url, {
@@ -77,6 +79,16 @@ async function fireEngine(engineId, settings) {
     if (!res.ok) {
       status = "error";
       message = `Failed with status ${res.status}`;
+    } else {
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        if (Array.isArray(data?.images)) {
+          outputUrls = data.images;
+        } else {
+          outputUrl = data?.imageUrl || data?.image_url || data?.url || null;
+        }
+      }
     }
   } catch (err) {
     status = "error";
@@ -89,6 +101,8 @@ async function fireEngine(engineId, settings) {
       last_run_at: new Date().toISOString(),
       last_status: status,
       last_message: message,
+      last_output_url: outputUrl,
+      last_output_urls: outputUrls,
     })
     .eq("engine_id", engineId);
 
@@ -97,7 +111,7 @@ async function fireEngine(engineId, settings) {
     console.error(`[Automate] ${engineId} failed: ${message}`);
   }
 
-  return { status, message };
+  return { status, message, outputUrl, outputUrls };
 }
 
 function scheduleEngine(engineId, settings) {
