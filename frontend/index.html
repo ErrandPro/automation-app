@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Automate</title>
+<style>
+  :root{
+    --bg: #0d1017;
+    --panel: #131722;
+    --panel-raised: #1a1f2c;
+    --line: #262c3d;
+    --line-soft: #1c212e;
+    --sapphire: #2e6fd9;
+    --sapphire-bright: #4c86e8;
+    --emerald: #1f9e6e;
+    --emerald-bright: #2bb87f;
+    --saffron: #c98a1f;
+    --red: #ea6660;
+    --text: #f5f6fa;
+    --text-dim: #9aa0b4;
+    --text-faint: #5c6379;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body{
+    margin:0;
+    background: radial-gradient(ellipse at top, #161b28 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height:100vh;
+    padding: 32px 16px 64px;
+  }
+
+  .wrap{ max-width: 980px; margin: 0 auto; }
+
+  header{ margin-bottom: 28px; }
+
+  .eyebrow{
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--saffron);
+    margin: 0 0 8px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .eyebrow::before{
+    content:'';
+    width:6px; height:6px; border-radius:50%;
+    background: var(--emerald-bright);
+    box-shadow: 0 0 6px var(--emerald-bright);
+    display:inline-block;
+  }
+
+  h1{
+    font-family: var(--mono);
+    font-size: clamp(24px, 5vw, 32px);
+    font-weight: 600;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+    color: #fff;
+  }
+
+  header p{
+    color: var(--text-dim);
+    font-size: 14px;
+    max-width: 60ch;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 18px;
+  }
+
+  .card{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--saffron);
+    border-radius: 10px;
+    padding: 20px;
+    display:flex;
+    flex-direction:column;
+    gap: 14px;
+  }
+
+  .card-head{
+    display:flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .card-title{
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: #fff;
+  }
+
+  .card-sub{
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .toggle-row{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .toggle-label{
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .switch{
+    position: relative;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+
+  .switch input{ opacity:0; width:0; height:0; }
+
+  .slider{
+    position:absolute;
+    inset:0;
+    background: var(--line);
+    border-radius: 999px;
+    cursor:pointer;
+    transition: background 0.15s ease;
+  }
+
+  .slider::before{
+    content:'';
+    position:absolute;
+    width:16px; height:16px;
+    left:3px; top:3px;
+    background: var(--text-dim);
+    border-radius:50%;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  .switch input:checked + .slider{
+    background: rgba(31,158,110,0.25);
+    outline: 1px solid var(--saffron);
+  }
+
+  .switch input:checked + .slider::before{
+    transform: translateX(18px);
+    background: var(--emerald-bright);
+  }
+
+  .field{ display:flex; flex-direction:column; gap:6px; }
+
+  .field label{
+    font-size: 12px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  select, input[type="text"], input[type="time"], textarea{
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 9px 10px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13.5px;
+    width: 100%;
+  }
+
+  select:focus, input:focus, textarea:focus{
+    outline: none;
+    border-color: var(--sapphire);
+  }
+
+  textarea{ resize: vertical; min-height: 60px; }
+
+  .row-2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .schedule-detail{
+    display:none;
+    flex-direction:column;
+    gap: 10px;
+    padding: 10px;
+    background: var(--panel-raised);
+    border-radius: 7px;
+    border: 1px solid var(--line-soft);
+  }
+
+  .schedule-detail.visible{ display:flex; }
+
+  .btn-row{ display:flex; gap:10px; margin-top: 4px; }
+
+  button{
+    border: none;
+    border-radius: 7px;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13.5px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.1s ease;
+    flex: 1;
+  }
+
+  button:active{ transform: scale(0.98); }
+
+  .btn-save{ background: var(--sapphire); color: #fff; }
+  .btn-save:hover{ background: var(--sapphire-bright); }
+
+  .btn-trigger{ background: var(--emerald); color: #fff; }
+  .btn-trigger:hover{ background: var(--emerald-bright); }
+
+  button:disabled{ background: var(--line); color: var(--text-faint); cursor: not-allowed; }
+
+  .status-line{
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-faint);
+    border-top: 1px solid var(--line-soft);
+    padding-top: 10px;
+    display:flex;
+    align-items:center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .status-dot{
+    width:7px; height:7px; border-radius:50%;
+    background: var(--text-faint);
+    flex-shrink:0;
+  }
+
+  .status-dot.success{ background: var(--emerald-bright); box-shadow: 0 0 6px var(--emerald-bright); }
+  .status-dot.error{ background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  .save-msg{
+    font-size: 11.5px;
+    font-family: var(--mono);
+    color: var(--emerald-bright);
+    min-height: 14px;
+  }
+
+  footer{
+    margin-top: 36px;
+    text-align:center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+  }
+
+  @media (max-width: 480px){
+    body{ padding: 24px 12px 48px; }
+    .card{ padding: 16px; }
+    .row-2{ grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Automate</p>
+    <h1>Workflow control panel</h1>
+    <p>Set schedules, instructions and destinations per engine, or trigger any of them on demand.</p>
+  </header>
+
+  <div class="grid" id="grid"></div>
+
+  <footer>automation-app-5hbp.onrender.com</footer>
+</div>
+
+<script>
+const API_BASE = "https://automation-app-5hbp.onrender.com";
+
+const ENGINE_META = {
+  "reflections-carousel": { title: "Reflections carousel", sub: "Multi-slide reflections carousel." },
+  "encouragement": { title: "Encouragement", sub: "WhatsApp encouragement message to the group." },
+  "reflection-post": { title: "Reflection post", sub: "Single reflection post." },
+  "slide-generator": { title: "Slide generator", sub: "Rendered slide image from the source row." },
+};
+
+const grid = document.getElementById("grid");
+
+function cardTemplate(engineId, meta, settings){
+  const s = settings || {};
+  return `
+    <div class="card" data-engine="${engineId}">
+      <div class="card-head">
+        <div>
+          <p class="card-title">${meta.title}</p>
+          <p class="card-sub">${meta.sub}</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" class="f-enabled" ${s.enabled ? "checked" : ""}>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label>Schedule</label>
+        <select class="f-schedule-type">
+          <option value="off" ${s.schedule_type === "off" ? "selected" : ""}>Off (manual only)</option>
+          <option value="daily" ${s.schedule_type === "daily" ? "selected" : ""}>Daily</option>
+          <option value="weekly" ${s.schedule_type === "weekly" ? "selected" : ""}>Weekly</option>
+          <option value="custom" ${s.schedule_type === "custom" ? "selected" : ""}>Custom cron</option>
+        </select>
+      </div>
+
+      <div class="schedule-detail sd-daily">
+        <div class="field">
+          <label>Time</label>
+          <input type="time" class="f-time" value="${s.schedule_time || "06:00"}">
+        </div>
+      </div>
+
+      <div class="schedule-detail sd-weekly">
+        <div class="row-2">
+          <div class="field">
+            <label>Day</label>
+            <select class="f-day">
+              <option value="0" ${s.schedule_day === 0 ? "selected" : ""}>Sunday</option>
+              <option value="1" ${s.schedule_day === 1 ? "selected" : ""}>Monday</option>
+              <option value="2" ${s.schedule_day === 2 ? "selected" : ""}>Tuesday</option>
+              <option value="3" ${s.schedule_day === 3 ? "selected" : ""}>Wednesday</option>
+              <option value="4" ${s.schedule_day === 4 ? "selected" : ""}>Thursday</option>
+              <option value="5" ${s.schedule_day === 5 ? "selected" : ""}>Friday</option>
+              <option value="6" ${s.schedule_day === 6 ? "selected" : ""}>Saturday</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Time</label>
+            <input type="time" class="f-time-weekly" value="${s.schedule_time || "06:00"}">
+          </div>
+        </div>
+      </div>
+
+      <div class="schedule-detail sd-custom">
+        <div class="field">
+          <label>Cron expression</label>
+          <input type="text" class="f-cron" placeholder="0 6 * * *" value="${s.cron_expression || ""}">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Instructions</label>
+        <textarea class="f-instructions" placeholder="Content description or instructions for this run...">${s.instructions || ""}</textarea>
+      </div>
+
+      <div class="row-2">
+        <div class="field">
+          <label>Tone</label>
+          <input type="text" class="f-tone" placeholder="e.g. reflective" value="${s.tone || ""}">
+        </div>
+        <div class="field">
+          <label>Destination override</label>
+          <input type="text" class="f-destination" placeholder="optional" value="${s.destination || ""}">
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <span class="toggle-label">Notify me if this run fails</span>
+        <label class="switch">
+          <input type="checkbox" class="f-notify" ${s.notify_on_failure ? "checked" : ""}>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-save">Save settings</button>
+        <button class="btn-trigger">Trigger now</button>
+      </div>
+
+      <div class="save-msg"></div>
+
+      <div class="status-line">
+        <span class="status-dot ${s.last_status === 'success' ? 'success' : s.last_status === 'error' ? 'error' : ''}"></span>
+        <span class="last-run">${s.last_run_at ? "Last run " + new Date(s.last_run_at).toLocaleString() : "Never run"}</span>
+        <span>${s.last_message ? "— " + s.last_message : ""}</span>
+      </div>
+    </div>
+  `;
+}
+
+function updateScheduleVisibility(card){
+  const type = card.querySelector(".f-schedule-type").value;
+  card.querySelectorAll(".schedule-detail").forEach(el => el.classList.remove("visible"));
+  if (type === "daily") card.querySelector(".sd-daily").classList.add("visible");
+  if (type === "weekly") card.querySelector(".sd-weekly").classList.add("visible");
+  if (type === "custom") card.querySelector(".sd-custom").classList.add("visible");
+}
+
+function readCardPayload(card){
+  const type = card.querySelector(".f-schedule-type").value;
+  const payload = {
+    enabled: card.querySelector(".f-enabled").checked,
+    schedule_type: type,
+    instructions: card.querySelector(".f-instructions").value,
+    tone: card.querySelector(".f-tone").value,
+    destination: card.querySelector(".f-destination").value,
+    notify_on_failure: card.querySelector(".f-notify").checked,
+    schedule_time: null,
+    schedule_day: null,
+    cron_expression: null,
+  };
+  if (type === "daily") payload.schedule_time = card.querySelector(".f-time").value;
+  if (type === "weekly") {
+    payload.schedule_time = card.querySelector(".f-time-weekly").value;
+    payload.schedule_day = parseInt(card.querySelector(".f-day").value, 10);
+  }
+  if (type === "custom") payload.cron_expression = card.querySelector(".f-cron").value;
+  return payload;
+}
+
+async function loadEngines(){
+  grid.innerHTML = `<p style="color:var(--text-dim);font-family:var(--mono);font-size:12px">Loading engines...</p>`;
+  let data;
+  try {
+    const res = await fetch(`${API_BASE}/api/engines`);
+    if (!res.ok) throw new Error(`Backend returned status ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    grid.innerHTML = `<p style="color:var(--red);font-family:var(--mono);font-size:12px">
+      Can't connect right now. Please try again in a moment.
+    </p>`;
+    return;
+  }
+
+  grid.innerHTML = "";
+  data.forEach(row => {
+    const meta = ENGINE_META[row.engine_id] || { title: row.engine_id, sub: "" };
+    grid.insertAdjacentHTML("beforeend", cardTemplate(row.engine_id, meta, row));
+  });
+
+  document.querySelectorAll(".card").forEach(card => {
+    updateScheduleVisibility(card);
+    card.querySelector(".f-schedule-type").addEventListener("change", () => updateScheduleVisibility(card));
+
+    card.querySelector(".btn-save").addEventListener("click", async () => {
+      const engineId = card.dataset.engine;
+      const btn = card.querySelector(".btn-save");
+      const msg = card.querySelector(".save-msg");
+      btn.disabled = true;
+      btn.textContent = "Saving...";
+      try {
+        const res = await fetch(`${API_BASE}/api/engines/${engineId}/settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(readCardPayload(card)),
+        });
+        if (!res.ok) throw new Error("Save failed");
+        msg.textContent = "Saved";
+        msg.style.color = "var(--emerald-bright)";
+        setTimeout(() => { msg.textContent = ""; }, 2500);
+      } catch (err) {
+        msg.textContent = "Error saving";
+        msg.style.color = "var(--red)";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Save settings";
+      }
+    });
+
+    card.querySelector(".btn-trigger").addEventListener("click", async () => {
+      const engineId = card.dataset.engine;
+      const btn = card.querySelector(".btn-trigger");
+      const statusLine = card.querySelector(".status-line");
+      const dot = card.querySelector(".status-dot");
+      const lastRun = card.querySelector(".last-run");
+      btn.disabled = true;
+      btn.textContent = "Running...";
+      try {
+        const res = await fetch(`${API_BASE}/api/engines/${engineId}/trigger`, { method: "POST" });
+        const data = await res.json();
+        dot.className = "status-dot " + (data.status === "success" ? "success" : "error");
+        lastRun.textContent = "Last run " + new Date().toLocaleString();
+        statusLine.querySelector("span:last-child").textContent = data.message ? "— " + data.message : "";
+      } catch (err) {
+        dot.className = "status-dot error";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Trigger now";
+      }
+    });
+  });
+}
+
+loadEngines();
+</script>
+
+</body>
+</html>
