@@ -277,6 +277,47 @@
     min-height: 14px;
   }
 
+  .output-panel{
+    display:none;
+    flex-direction:column;
+    gap: 10px;
+  }
+
+  .output-panel.visible{ display:flex; }
+
+  .output-panel img{
+    width:100%;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    display:block;
+  }
+
+  .output-gallery{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .output-gallery img{
+    width:100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    cursor: pointer;
+  }
+
+  .output-actions{ display:flex; gap:10px; }
+
+  .btn-ghost{
+    background: var(--panel-raised);
+    color: var(--text);
+    border: 1px solid var(--line);
+    flex: 1;
+  }
+
+  .btn-ghost:hover{ border-color: var(--sapphire); }
+
   footer{
     margin-top: 36px;
     text-align:center;
@@ -411,6 +452,15 @@ function cardTemplate(engineId, meta, settings){
 
       <div class="save-msg"></div>
 
+      <div class="output-panel">
+        <img class="output-img" src="" alt="Generated slide">
+        <div class="output-gallery"></div>
+        <div class="output-actions">
+          <button class="btn-ghost btn-download">Download</button>
+          <button class="btn-ghost btn-share">Share</button>
+        </div>
+      </div>
+
       <div class="status-line">
         <span class="status-dot ${s.last_status === 'success' ? 'success' : s.last_status === 'error' ? 'error' : ''}"></span>
         <span class="last-run">${s.last_run_at ? "Last run " + new Date(s.last_run_at).toLocaleString() : "Never run"}</span>
@@ -505,6 +555,9 @@ async function loadEngines(){
       const statusLine = card.querySelector(".status-line");
       const dot = card.querySelector(".status-dot");
       const lastRun = card.querySelector(".last-run");
+      const outputPanel = card.querySelector(".output-panel");
+      const outputImg = card.querySelector(".output-img");
+      const gallery = card.querySelector(".output-gallery");
       btn.disabled = true;
       btn.textContent = "Running...";
       try {
@@ -513,11 +566,79 @@ async function loadEngines(){
         dot.className = "status-dot " + (data.status === "success" ? "success" : "error");
         lastRun.textContent = "Last run " + new Date().toLocaleString();
         statusLine.querySelector("span:last-child").textContent = data.message ? "— " + data.message : "";
+
+        gallery.innerHTML = "";
+        outputImg.style.display = "none";
+        gallery.style.display = "none";
+
+        if (Array.isArray(data.outputUrls) && data.outputUrls.length > 0) {
+          gallery.style.display = "grid";
+          data.outputUrls.forEach((url, i) => {
+            const thumb = document.createElement("img");
+            thumb.src = url;
+            thumb.alt = `Slide ${i + 1}`;
+            thumb.addEventListener("click", () => {
+              outputImg.src = url;
+              outputImg.style.display = "block";
+            });
+            gallery.appendChild(thumb);
+          });
+          outputImg.src = data.outputUrls[0];
+          outputImg.style.display = "block";
+          outputPanel.classList.add("visible");
+        } else if (data.outputUrl) {
+          outputImg.src = data.outputUrl;
+          outputImg.style.display = "block";
+          outputPanel.classList.add("visible");
+        } else {
+          outputPanel.classList.remove("visible");
+        }
       } catch (err) {
         dot.className = "status-dot error";
       } finally {
         btn.disabled = false;
         btn.textContent = "Trigger now";
+      }
+    });
+
+    card.querySelector(".btn-download").addEventListener("click", async () => {
+      const url = card.querySelector(".output-img").src;
+      if (!url) return;
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `${card.dataset.engine}-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch (err) {
+        window.open(url, "_blank");
+      }
+    });
+
+    card.querySelector(".btn-share").addEventListener("click", async () => {
+      const url = card.querySelector(".output-img").src;
+      if (!url) return;
+      const shareBtn = card.querySelector(".btn-share");
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: "Generated slide", url });
+        } catch (err) {
+          // user cancelled the native share sheet, nothing to do
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(url);
+          const original = shareBtn.textContent;
+          shareBtn.textContent = "Link copied";
+          setTimeout(() => { shareBtn.textContent = original; }, 2000);
+        } catch (err) {
+          window.prompt("Copy this link:", url);
+        }
       }
     });
   });
