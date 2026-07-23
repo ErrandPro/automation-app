@@ -183,6 +183,11 @@
     background: var(--emerald-bright);
   }
 
+  .switch input:disabled + .slider{
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .field{ display:flex; flex-direction:column; gap:6px; }
 
   .field label{
@@ -191,6 +196,13 @@
     font-family: var(--mono);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+
+  .field-hint{
+    font-size: 11.5px;
+    color: var(--text-faint);
+    margin: 0;
+    line-height: 1.5;
   }
 
   select, input[type="text"], input[type="time"], textarea{
@@ -455,10 +467,30 @@
 const API_BASE = "https://automation-app-5hbp.onrender.com";
 
 const ENGINE_META = {
-  "reflections-carousel": { title: "Reflections carousel", sub: "Multi-slide reflection carousel.", tags: ["Instagram"] },
-  "encouragement": { title: "Encouragement message", sub: "A short message of encouragement.", tags: ["WhatsApp", "Instagram"] },
-  "reflection-post": { title: "Reflection message", sub: "A single reflection, sent out.", tags: ["WhatsApp", "Instagram"] },
-  "slide-generator": { title: "Image slide creator", sub: "A single rendered visual, ready to post.", tags: ["Instagram"] },
+  "reflections-carousel": {
+    title: "Generate carousel posts",
+    sub: "Multi-slide reflection carousel.",
+    tags: ["Instagram"],
+    instructionsPlaceholder: "Describe what you want on the carousel, with details for each slide. e.g. Slide 1: opening question about patience. Slide 2: a short scripture on waiting. Slide 3: a closing encouragement.",
+  },
+  "encouragement": {
+    title: "Post text",
+    sub: "A short message of encouragement.",
+    tags: ["WhatsApp", "Instagram"],
+    instructionsPlaceholder: "What should this message encourage people about?",
+  },
+  "reflection-post": {
+    title: "Post text",
+    sub: "A single reflection, sent out.",
+    tags: ["WhatsApp", "Instagram"],
+    instructionsPlaceholder: "What should this reflection be about?",
+  },
+  "slide-generator": {
+    title: "Text on slide maker",
+    sub: "A single rendered visual, ready to post.",
+    tags: ["Instagram"],
+    instructionsPlaceholder: "What text should appear on the slide?",
+  },
 };
 
 const grid = document.getElementById("grid");
@@ -485,7 +517,7 @@ function cardTemplate(engineId, meta, settings){
           <option value="off" ${s.schedule_type === "off" ? "selected" : ""}>Off (manual only)</option>
           <option value="daily" ${s.schedule_type === "daily" ? "selected" : ""}>Daily</option>
           <option value="weekly" ${s.schedule_type === "weekly" ? "selected" : ""}>Weekly</option>
-          <option value="custom" ${s.schedule_type === "custom" ? "selected" : ""}>Custom cron</option>
+          <option value="custom" ${s.schedule_type === "custom" ? "selected" : ""}>Custom (describe it)</option>
         </select>
       </div>
 
@@ -519,14 +551,15 @@ function cardTemplate(engineId, meta, settings){
 
       <div class="schedule-detail sd-custom">
         <div class="field">
-          <label>Cron expression</label>
-          <input type="text" class="f-cron" placeholder="0 6 * * *" value="${s.cron_expression || ""}">
+          <label>Describe the schedule</label>
+          <textarea class="f-schedule-description" placeholder="e.g. every weekday at 7am, or every Monday and Thursday at 6pm">${s.schedule_description || ""}</textarea>
+          <p class="field-hint">We'll turn this into a schedule automatically when you save.</p>
         </div>
       </div>
 
       <div class="field">
         <label>Instructions</label>
-        <textarea class="f-instructions" placeholder="Content description or instructions for this run...">${s.instructions || ""}</textarea>
+        <textarea class="f-instructions" placeholder="${meta.instructionsPlaceholder || "Content description or instructions for this run..."}">${s.instructions || ""}</textarea>
       </div>
 
       <div class="row-2">
@@ -598,14 +631,14 @@ function readCardPayload(card){
     notify_on_failure: card.querySelector(".f-notify").checked,
     schedule_time: null,
     schedule_day: null,
-    cron_expression: null,
+    schedule_description: null,
   };
   if (type === "daily") payload.schedule_time = card.querySelector(".f-time").value;
   if (type === "weekly") {
     payload.schedule_time = card.querySelector(".f-time-weekly").value;
     payload.schedule_day = parseInt(card.querySelector(".f-day").value, 10);
   }
-  if (type === "custom") payload.cron_expression = card.querySelector(".f-cron").value;
+  if (type === "custom") payload.schedule_description = card.querySelector(".f-schedule-description").value;
   return payload;
 }
 
@@ -633,6 +666,32 @@ async function loadEngines(){
     updateScheduleVisibility(card);
     card.querySelector(".f-schedule-type").addEventListener("change", () => updateScheduleVisibility(card));
 
+    // Toggling on/off now saves instantly, instead of waiting for "Save settings".
+    card.querySelector(".f-enabled").addEventListener("change", async (e) => {
+      const engineId = card.dataset.engine;
+      const checkbox = e.target;
+      const msg = card.querySelector(".save-msg");
+      const nextValue = checkbox.checked;
+      checkbox.disabled = true;
+      try {
+        const res = await fetch(`${API_BASE}/api/engines/${engineId}/toggle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: nextValue }),
+        });
+        if (!res.ok) throw new Error("Toggle failed");
+        msg.textContent = nextValue ? "Turned on" : "Turned off";
+        msg.style.color = "var(--emerald-bright)";
+        setTimeout(() => { msg.textContent = ""; }, 2000);
+      } catch (err) {
+        checkbox.checked = !nextValue;
+        msg.textContent = "Couldn't update — try again";
+        msg.style.color = "var(--red)";
+      } finally {
+        checkbox.disabled = false;
+      }
+    });
+
     card.querySelector(".btn-save").addEventListener("click", async () => {
       const engineId = card.dataset.engine;
       const btn = card.querySelector(".btn-save");
@@ -645,10 +704,16 @@ async function loadEngines(){
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(readCardPayload(card)),
         });
-        if (!res.ok) throw new Error("Save failed");
-        msg.textContent = "Saved";
-        msg.style.color = "var(--emerald-bright)";
-        setTimeout(() => { msg.textContent = ""; }, 2500);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Save failed");
+        if (data.schedule_warning) {
+          msg.textContent = "Saved, but: " + data.schedule_warning;
+          msg.style.color = "var(--saffron)";
+        } else {
+          msg.textContent = "Saved";
+          msg.style.color = "var(--emerald-bright)";
+        }
+        setTimeout(() => { msg.textContent = ""; }, 4000);
       } catch (err) {
         msg.textContent = "Error saving";
         msg.style.color = "var(--red)";
