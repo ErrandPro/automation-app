@@ -16,19 +16,19 @@ const supabase = createClient(
 // Your four production n8n webhooks live here, server-side only.
 const ENGINES = {
   "reflections-carousel": {
-    title: "Run reflections carousel",
+    title: "Generate carousel posts",
     url: "https://wellen256-n8n.hf.space/webhook/6653114c-69ed-48a6-aeef-85351c9abd72",
   },
   "encouragement": {
-    title: "Send encouragement",
+    title: "Post text",
     url: "https://wellen256-n8n.hf.space/webhook/dd0b93c3-b456-4b73-81a6-0fc6f7897710",
   },
   "reflection-post": {
-    title: "Post reflection",
+    title: "Post text",
     url: "https://wellen256-n8n.hf.space/webhook/6804195a-7738-4e56-ba94-dca325b13874",
   },
   "slide-generator": {
-    title: "Generate slide",
+    title: "Text on slide maker",
     url: "https://wellen256-n8n.hf.space/webhook/34391dd7-7713-467f-b10a-d291d0d812b2",
   },
 };
@@ -36,10 +36,67 @@ const ENGINES = {
 // Holds the live node-cron task per engine so we can stop/replace it on save.
 const activeJobs = {};
 
-function buildCronExpression(settings) {
-  if (settings.schedule_type === "custom") {
-    return settings.cron_expression || null;
+// Converts a plain-English schedule description (e.g. "every weekday at 7am")
+// into a 5-field cron expression, using Groq. Called once at save time, not
+// on every run, so the schedule stays cheap and stable once it's set.
+async function naturalLanguageToCron(description) {
+  if (!description || !description.trim()) {
+    throw new Error("Please describe when this should run.");
   }
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) {
+    throw new Error("GROQ_API_KEY is not configured on the server.");
+  }
+
+  const systemPrompt =
+    "You convert a plain English scheduling request into a single standard 5-field cron " +
+    "expression (minute hour day-of-month month day-of-week), assuming UTC time. " +
+    "Respond with ONLY a JSON object in the exact form {\"cron\": \"<expression>\"} and nothing " +
+    "else. No markdown, no code fences, no explanation. If the request is ambiguous, make the " +
+    "most reasonable choice.";
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + groqKey,
+    },
+    body: JSON.stringify({
+      model: "openai/gpt-oss-120b",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: description },
+      ],
+      temperature: 0,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error("Groq request failed with status " + res.status);
+  }
+
+  const data = await res.json();
+  const raw = data?.choices?.[0]?.message?.content || "";
+  const cleaned = raw.replace(/```json|```/g, "").trim();
+
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error("Could not understand that schedule. Try rephrasing it.");
+  }
+
+  if (!parsed.cron || !cron.validate(parsed.cron)) {
+    throw new Error("That schedule didn't convert cleanly. Try rephrasing it.");
+  }
+
+  return parsed.cron;
+}
+
+// Computes the cron expression to store for daily/weekly types. Custom
+// descriptions are resolved separately via naturalLanguageToCron.
+function buildFixedCronExpression(settings) {
   if (!settings.schedule_time) return null;
   const [hour, minute] = settings.schedule_time.split(":").map(Number);
   if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
@@ -114,8 +171,9 @@ async function fireEngine(engineId, settings) {
   return { status, message, outputUrl, outputUrls };
 }
 
+// The cron expression is now always precomputed and stored at save time
+// (either from time/day fields or via Groq), so scheduling just reads it.
 function scheduleEngine(engineId, settings) {
-  // Clear any existing job before rescheduling.
   if (activeJobs[engineId]) {
     activeJobs[engineId].stop();
     delete activeJobs[engineId];
@@ -123,17 +181,18 @@ function scheduleEngine(engineId, settings) {
 
   if (!settings.enabled || settings.schedule_type === "off") return;
 
-  const cronExpression = buildCronExpression(settings);
-  if (!cronExpression || !cron.validate(cronExpression)) {
-    console.warn(`[Automate] Invalid cron for ${engineId}: ${cronExpression}`);
+  if (!settings.cron_expression || !cron.validate(settings.cron_expression)) {
+    console.warn(`[Automate] No valid cron stored for ${engineId}, skipping schedule.`);
     return;
   }
 
-  activeJobs[engineId] = cron.schedule(cronExpression, () => {
-    fireEngine(engineId, settings);
-  });
+  activeJobs[engineId] = cron.schedule(
+    settings.cron_expression,
+    () => fireEngine(engineId, settings),
+    { timezone: "UTC" }
+  );
 
-  console.log(`[Automate] Scheduled ${engineId} with "${cronExpression}"`);
+  console.log(`[Automate] Scheduled ${engineId} with "${settings.cron_expression}"`);
 }
 
 async function loadAllSchedules() {
@@ -167,12 +226,25 @@ app.post("/api/engines/:id/settings", async (req, res) => {
     schedule_type,
     schedule_time,
     schedule_day,
-    cron_expression,
+    schedule_description,
     instructions,
     tone,
     destination,
     notify_on_failure,
   } = req.body;
+
+  let cron_expression = null;
+  let scheduleWarning = null;
+
+  if (schedule_type === "daily" || schedule_type === "weekly") {
+    cron_expression = buildFixedCronExpression({ schedule_type, schedule_time, schedule_day });
+  } else if (schedule_type === "custom") {
+    try {
+      cron_expression = await naturalLanguageToCron(schedule_description);
+    } catch (err) {
+      scheduleWarning = err.message;
+    }
+  }
 
   const { data, error } = await supabase
     .from("automation_settings")
@@ -181,6 +253,7 @@ app.post("/api/engines/:id/settings", async (req, res) => {
       schedule_type,
       schedule_time,
       schedule_day,
+      schedule_description,
       cron_expression,
       instructions,
       tone,
@@ -194,7 +267,35 @@ app.post("/api/engines/:id/settings", async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  scheduleEngine(engineId, data); // reschedule immediately, no restart needed
+  scheduleEngine(engineId, data);
+
+  if (scheduleWarning) {
+    return res.status(207).json({ ...data, schedule_warning: scheduleWarning });
+  }
+  res.json(data);
+});
+
+// Instant enable/disable — used by the toggle switch so flipping it takes
+// effect immediately without requiring a full "Save settings" click.
+app.post("/api/engines/:id/toggle", async (req, res) => {
+  const engineId = req.params.id;
+  if (!ENGINES[engineId]) return res.status(404).json({ error: "Unknown engine" });
+
+  const { enabled } = req.body;
+  if (typeof enabled !== "boolean") {
+    return res.status(400).json({ error: "enabled must be true or false" });
+  }
+
+  const { data, error } = await supabase
+    .from("automation_settings")
+    .update({ enabled, updated_at: new Date().toISOString() })
+    .eq("engine_id", engineId)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  scheduleEngine(engineId, data);
   res.json(data);
 });
 
